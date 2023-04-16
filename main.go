@@ -543,39 +543,15 @@ func (b *Board) String2(short bool) string {
 	return out
 }
 
-func (b *Board) ZeroBridgeExcesses() bool {
+func (b *Board) RequiredFill() bool {
 	changed := false
 	for _, island := range b.AllIslands {
-		if island.IsComplete() {
-			continue
-		}
-		if island.Available == island.NumNeeded() {
-			log.Debug("Island %s num %d bridges %d needed %d available %d\n", island, island.Num, island.Bridges, island.NumNeeded(), island.Available)
-			for _, r := range island.LiveRivers {
-				if r.ToGive > 1 {
-					log.Trace("Adding a second one because ToGive is %d!\n", r.ToGive)
-					b.AddBridge(r)
-				}
-				log.Debug("Adding one or more bridges with %s\n", r.Neighbor(island))
+		excess := island.Available - island.NumNeeded()
+		for _, r := range island.LiveRivers {
+			for r.ToGive > excess {
+				log.Debug("Island %s needs %d, available %d; adding bridge to river %s\n", island, island.NumNeeded(), island.Available, r)
 				b.AddBridge(r)
-				log.Debug("Me: %s Neighbor: %s\n", island, r.Neighbor(island))
 				changed = true
-			}
-		}
-	}
-	return changed
-}
-
-func (b *Board) OneBridgeExcesses() bool {
-	changed := false
-	for _, island := range b.AllIslands {
-		if island.Available == island.NumNeeded()+1 {
-			for _, r := range island.LiveRivers {
-				if r.ToGive > 1 {
-					log.Debug("Island %s needs %d, available %d; adding bridge to river %s\n", island, island.NumNeeded(), island.Available, r)
-					b.AddBridge(r)
-					changed = true
-				}
 			}
 		}
 	}
@@ -640,17 +616,8 @@ func main() {
 	changed := true
 	for changed {
 		changed = false
-		changed = b.ZeroBridgeExcesses() || changed
-		changed = b.OneBridgeExcesses() || changed
+		changed = b.RequiredFill() || changed
 		changed = b.CapToAvoidIsolation() || changed
-		/*
-			b.AddBridgeBetween(b.Grid[0][2], b.Grid[0][0])
-			fmt.Printf("%s\n", b)
-			b.AddBridgeBetween(b.Grid[2][2], b.Grid[2][4])
-			fmt.Printf("%s\n", b)
-			b.AddBridgeBetween(b.Grid[0][2], b.Grid[2][2])
-			fmt.Printf("%s\n", b)
-		*/
 	}
 	fmt.Printf("%s\n", b)
 	res, reason := b.IsSolved()
