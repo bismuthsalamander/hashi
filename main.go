@@ -457,49 +457,42 @@ func (b *Board) String2(short bool) string {
 		}
 	}
 
-	addBridges := func(output [][]rune, ri int, ci int, count int, direction int) {
+	getBridgeChar := func(direction int, num int) rune {
 		if direction == HORIZONTAL {
-			if output[ri][ci] == ' ' {
-				if count == 1 {
-					output[ri][ci] = '-'
-				} else if count == 2 {
-					output[ri][ci] = '='
-				}
-			} else if output[ri][ci] == '|' {
-				if count == 1 {
-					output[ri][ci] = '+'
-				} else if count == 2 {
-					output[ri][ci] = 'F'
-				}
-			} else if output[ri][ci] == '"' {
-				if count == 1 {
-					output[ri][ci] = 'H'
-				} else if count == 2 {
-					output[ri][ci] = '#'
-				}
+			if num == 1 {
+				return '-'
+			} else if num == 2 {
+				return '='
 			}
 		} else if direction == VERTICAL {
-			if output[ri][ci] == ' ' {
-				if count == 1 {
-					output[ri][ci] = '|'
-				} else if count == 2 {
-					output[ri][ci] = '"'
-				}
-			} else if output[ri][ci] == '-' {
-				if count == 1 {
-					output[ri][ci] = '+'
-				} else if count == 2 {
-					output[ri][ci] = 'H'
-				}
-			} else if output[ri][ci] == '=' {
-				if count == 1 {
-					output[ri][ci] = 'F'
-				} else if count == 2 {
-					output[ri][ci] = '#'
-				}
+			if num == 1 {
+				return '|'
+			} else if num == 2 {
+				return '"'
 			}
 		}
+		return ' '
 	}
+	addBridgeChars := func(h rune, v rune) rune {
+		if v == '|' {
+			if h == '-' {
+				return '+'
+			} else if h == '=' {
+				return 'F'
+			}
+			return v
+		} else if v == '"' {
+			if h == '-' {
+				return 'H'
+			} else if h == '=' {
+				return '#'
+			}
+			return v
+		}
+		//v must be a space
+		return h
+	}
+
 	for _, r := range b.AllRivers {
 		if r.Bridges == 0 {
 			continue
@@ -512,7 +505,7 @@ func (b *Board) String2(short bool) string {
 			ri := r.Islands[0].R
 			for ci := cleft + 1; ci < cright; ci++ {
 				log.Trace("Writing %d horizontal bridges at %d, %d\n", r.Bridges, ri, ci)
-				addBridges(grid, ri, ci, r.Bridges, HORIZONTAL)
+				grid[ri][ci] = addBridgeChars(getBridgeChar(HORIZONTAL, r.Bridges), grid[ri][ci])
 			}
 		} else {
 			//Vertical
@@ -521,7 +514,7 @@ func (b *Board) String2(short bool) string {
 			ci := r.Islands[0].C
 			for ri := rtop + 1; ri < rbot; ri++ {
 				log.Trace("Writing %d vertical bridges at %d, %d\n", r.Bridges, ri, ci)
-				addBridges(grid, ri, ci, r.Bridges, VERTICAL)
+				grid[ri][ci] = addBridgeChars(grid[ri][ci], getBridgeChar(VERTICAL, r.Bridges))
 			}
 		}
 	}
