@@ -82,6 +82,16 @@ func (c *Cluster) Size() int {
 	return len(c.Map)
 }
 
+func (c *Cluster) IncompleteIslands() []*Island {
+	ret := []*Island{}
+	for i := range c.Map {
+		if !i.IsComplete() {
+			ret = append(ret, i)
+		}
+	}
+	return ret
+}
+
 func (b *Board) IsSolved() (bool, error) {
 	//1. do all rivers have <= 2 bridges?
 	for _, r := range b.AllRivers {
@@ -173,6 +183,14 @@ func (b *Board) AddBridge(r *River) error {
 		crossingRiver.SetToGive(0)
 	}
 	return nil
+}
+
+func (r *River) CapToGive(mx int) bool {
+	if r.ToGive > mx {
+		r.SetToGive(mx)
+		return true
+	}
+	return false
 }
 
 func (r *River) SetToGive(ct int) {
@@ -569,7 +587,7 @@ func (c *Cluster) Edges() []*Island {
 	return edges
 }
 
-func (b *Board) CapToAvoidIsolation() bool {
+func (b *Board) CapToAvoidJoinedIsolation() bool {
 	changed := false
 	if len(b.Clusters) <= 2 {
 		return changed
@@ -589,9 +607,8 @@ func (b *Board) CapToAvoidIsolation() bool {
 			if n.NumNeeded() != i.NumNeeded() {
 				continue
 			}
-			if n.NumNeeded() <= r.ToGive {
-				log.Debug("River %s would result in an isolation with these clusters:\n%s\n%s\nReducing ToGive to %d\n", r, n.Cluster, i.Cluster, n.NumNeeded()-1)
-				r.SetToGive(n.NumNeeded() - 1)
+			if r.CapToGive(n.NumNeeded() - 1) {
+				log.Debug("River %s would have resulted in an isolation with these clusters:\n%s\n%s\nReduced ToGive to %d\n", r, n.Cluster, i.Cluster, n.NumNeeded())
 				changed = true
 			}
 		}
@@ -599,9 +616,35 @@ func (b *Board) CapToAvoidIsolation() bool {
 	return changed
 }
 
+func (b *Board) CapToAvoidSelfIsolation() bool {
+	changed := false
+	if len(b.Clusters) <= 2 {
+		return changed
+	}
+	for _, c := range b.Clusters {
+		incomplete := c.IncompleteIslands()
+		if len(incomplete) != 2 {
+			continue
+		}
+		r := incomplete[0].RiverWith(incomplete[1])
+		if r == nil {
+			continue
+		}
+		if incomplete[0].NumNeeded() != incomplete[1].NumNeeded() || incomplete[0].NumNeeded() < r.ToGive {
+			continue
+		}
+		r.CapToGive(incomplete[0].NumNeeded() - 1)
+		changed = true
+	}
+	return changed
+}
+
 func main() {
 	//log.LEVEL = log.DEBUG
-	b, err := GetBoardFromFile("problem36.txt")
+	if len(os.Args) != 2 {
+		fmt.Printf("usage: %s [problemfile]\n", os.Args[0])
+	}
+	b, err := GetBoardFromFile(os.Args[1])
 	if err != nil {
 		fmt.Printf("error loading file: %s\n", err)
 		return
@@ -610,7 +653,8 @@ func main() {
 	for changed {
 		changed = false
 		changed = b.RequiredFill() || changed
-		changed = b.CapToAvoidIsolation() || changed
+		changed = b.CapToAvoidJoinedIsolation() || changed
+		changed = b.CapToAvoidSelfIsolation() || changed
 	}
 	fmt.Printf("%s\n", b)
 	res, reason := b.IsSolved()
