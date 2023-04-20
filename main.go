@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bismuthsalamander/hashi/log"
 )
@@ -129,6 +130,47 @@ func (b *Board) IsSolved() (bool, error) {
 	return true, nil
 }
 
+func (b *Board) HasMistakes() (bool, error) {
+	//1. do any rivers have too many bridges?
+	for _, r := range b.AllRivers {
+		for _, i := range r.Islands {
+			if r.Bridges > i.Num {
+				return true, fmt.Errorf("river %s has %d bridges; island %s needs %d", r, r.Bridges, i, i.Num)
+			}
+		}
+	}
+
+	//2. do any islands have too few bridges available?
+	for _, i := range b.AllIslands {
+		if i.Available < i.NumNeeded() {
+			return true, fmt.Errorf("island %s needs %d bridges, but only %d are available", i, i.NumNeeded(), i.Available)
+		}
+
+	}
+
+	//3. is there an incomplete cluster with no edges?
+	if len(b.Clusters) > 1 {
+		for _, c := range b.Clusters {
+			if len(c.Edges()) == 0 {
+				return true, fmt.Errorf("cluster %s has no edges and does not contain all islands", c)
+			}
+		}
+	}
+
+	//4. are there clashing bridges (i.e., two crossing rivers each with >= 1 bridge)?
+	for _, r := range b.AllRivers {
+		if r.Bridges == 0 {
+			continue
+		}
+		for _, cross := range r.Crossings {
+			if cross.Bridges > 0 {
+				return true, fmt.Errorf("bridges %s and %s cross, but both have bridges (%d and %d)", r, cross, r.Bridges, cross.Bridges)
+			}
+		}
+	}
+	return false, nil
+}
+
 func (b *Board) AddIsland(ct int, r int, c int) *Island {
 	i := Island{
 		Num:       ct,
@@ -178,7 +220,6 @@ func (b *Board) AddBridge(r *River) error {
 	r.Islands[0].Update()
 	r.Islands[1].Update()
 	b.joinClusters(r.Islands[0].Cluster, r.Islands[1].Cluster)
-
 	for _, crossingRiver := range r.Crossings {
 		crossingRiver.SetToGive(0)
 	}
@@ -197,6 +238,15 @@ func (r *River) SetToGive(ct int) {
 	r.ToGive = ct
 	r.Islands[0].Update()
 	r.Islands[1].Update()
+}
+
+func (r *River) Crosses(other *River) bool {
+	for _, test := range r.Crossings {
+		if test == other {
+			return true
+		}
+	}
+	return false
 }
 
 func (i *Island) NumNeeded() int {
@@ -347,7 +397,6 @@ func (b *Board) FindHorizontalRiverCrossing(r int, c int) *River {
 		}
 	}
 	if left == nil {
-		log.Debug("Found no left on %d,%d\n", r, c)
 		return nil
 	}
 	for ci := c + 1; ci < b.Cols; ci++ {
@@ -357,7 +406,6 @@ func (b *Board) FindHorizontalRiverCrossing(r int, c int) *River {
 		}
 	}
 	if right == nil {
-		log.Debug("Found no right on %d,%d\n", r, c)
 		return nil
 	}
 	return left.RiverWith(right)
@@ -374,8 +422,7 @@ func (b *Board) CreateRivers() {
 			}
 
 			if left != nil {
-				r := b.CreateRiver(left, right)
-				log.Debug("Added river %s\n", r)
+				b.CreateRiver(left, right)
 			}
 			left = right
 		}
@@ -389,17 +436,12 @@ func (b *Board) CreateRivers() {
 			if bottom == nil {
 				continue
 			}
-
 			if top != nil {
 				r := b.CreateRiver(top, bottom)
-				log.Debug("Added river %s\n", r)
 				for crossRow := top.R + 1; crossRow < bottom.R; crossRow++ {
 					crossingRiver := b.FindHorizontalRiverCrossing(crossRow, ci)
 					if crossingRiver != nil {
-						log.Debug("River %s crosses river %s\n", r, crossingRiver)
 						markCrossing(crossingRiver, r)
-					} else {
-						log.Debug("Checked cell r%d, c%d\n", crossRow, ci)
 					}
 				}
 			}
@@ -421,16 +463,13 @@ func (b *Board) DebugOut() string {
 
 func BoardFromString(data string) (*Board, error) {
 	lines := make([]string, 0)
-	log.Debug("Splitting")
 	for _, txt := range strings.Split(data, "\n") {
 		txt = strings.Trim(txt, "\r\n")
 		if len(txt) > 0 {
 			lines = append(lines, txt)
 		}
 	}
-	log.Debug("Making board")
 	b := Board{Grid: make([][]*Island, 0), Rows: len(lines), Cols: len(lines[0]), Clusters: []*Cluster{}, AllRivers: []*River{}, AllIslands: []*Island{}}
-	log.Debug("Making islands")
 	for ri, rowstr := range lines {
 		if len(rowstr) != b.Cols {
 			return nil, fmt.Errorf("board has %d cols, but row %d has %d cells", b.Cols, ri, len(rowstr))
@@ -443,15 +482,12 @@ func BoardFromString(data string) (*Board, error) {
 			}
 		}
 	}
-	log.Debug("Adding rivers")
 	b.CreateRivers()
 	return &b, nil
 }
 
 func GetBoardFromFile(fn string) (*Board, error) {
-	log.Debug("Reading file")
 	data, err := os.ReadFile(fn)
-	log.Debug("Read file")
 	if err != nil {
 		return nil, err
 	}
@@ -459,7 +495,7 @@ func GetBoardFromFile(fn string) (*Board, error) {
 }
 
 func (b *Board) String() string {
-	return b.String2(false)
+	return b.String2(true)
 }
 
 func (b *Board) String2(short bool) string {
@@ -543,11 +579,10 @@ func (b *Board) String2(short bool) string {
 		}
 		out += "\n"
 	}
+	out += fmt.Sprintf("Clusters (%d)\n", len(b.Clusters))
 	if short {
 		return out[:len(out)-1]
 	}
-	out += fmt.Sprintf("Clusters (%d)\n", len(b.Clusters))
-
 	for _, c := range b.Clusters {
 		out += fmt.Sprintf("%s\n", c)
 	}
@@ -557,14 +592,7 @@ func (b *Board) String2(short bool) string {
 func (b *Board) RequiredFill() bool {
 	changed := false
 	for _, island := range b.AllIslands {
-		excess := island.Available - island.NumNeeded()
-		for _, r := range island.LiveRivers {
-			for r.ToGive > excess {
-				log.Debug("Island %s needs %d, available %d; adding bridge to river %s\n", island, island.NumNeeded(), island.Available, r)
-				b.AddBridge(r)
-				changed = true
-			}
-		}
+		b.MustProvide(island.LiveRivers, island.NumNeeded())
 	}
 	return changed
 }
@@ -608,7 +636,6 @@ func (b *Board) CapToAvoidJoinedIsolation() bool {
 				continue
 			}
 			if r.CapToGive(n.NumNeeded() - 1) {
-				log.Debug("River %s would have resulted in an isolation with these clusters:\n%s\n%s\nReduced ToGive to %d\n", r, n.Cluster, i.Cluster, n.NumNeeded())
 				changed = true
 			}
 		}
@@ -633,34 +660,219 @@ func (b *Board) CapToAvoidSelfIsolation() bool {
 		if incomplete[0].NumNeeded() != incomplete[1].NumNeeded() || incomplete[0].NumNeeded() < r.ToGive {
 			continue
 		}
-		r.CapToGive(incomplete[0].NumNeeded() - 1)
-		changed = true
+		if r.CapToGive(incomplete[0].NumNeeded() - 1) {
+			changed = true
+		}
 	}
 	return changed
 }
 
-func main() {
-	//log.LEVEL = log.DEBUG
-	if len(os.Args) != 2 {
-		fmt.Printf("usage: %s [problemfile]\n", os.Args[0])
+func (b *Board) MustProvide(rivers []*River, ct int) bool {
+	changed := false
+	avail := 0
+	for _, r := range rivers {
+		avail += r.ToGive
 	}
-	b, err := GetBoardFromFile(os.Args[1])
-	if err != nil {
-		fmt.Printf("error loading file: %s\n", err)
-		return
+	excess := avail - ct
+	for _, r := range rivers {
+		toAdd := r.ToGive - excess
+		for i := 0; i < toAdd; i++ {
+			b.AddBridge(r)
+			changed = true
+		}
 	}
+	return changed
+}
+
+// TODO: should we switch to directional river pointers instead of doing all this looping?
+func (b *Board) BadCorners() bool {
+	changed := false
+	//grab a "corner" pair of rivers
+	//find all neighbors with TWO rivers intersected by that corner
+	//if the neighbor no longer has enough, we have an impermissible corner
+	//max permissible in that pair is max(r1.ToGive, r2.ToGive)
+	//if current island needs more, then we have to get it from the other two (?) rivers
+	for _, i := range b.AllIslands {
+		if i.IsComplete() || len(i.LiveRivers) < 2 {
+			continue
+		}
+		emptyRivers := []*River{}
+		for _, r := range i.LiveRivers {
+			if r.Bridges == 0 {
+				emptyRivers = append(emptyRivers, r)
+			}
+		}
+		if len(emptyRivers) < 2 {
+			continue
+		}
+		for ri := 0; ri < len(emptyRivers); ri++ {
+			for rj := ri + 1; rj < len(emptyRivers); rj++ {
+				hitIslands := make(map[*Island]int)
+
+				for _, crossed := range emptyRivers[ri].Crossings {
+					hitIslands[crossed.Islands[0]]++
+					hitIslands[crossed.Islands[1]]++
+				}
+				for _, crossed := range emptyRivers[rj].Crossings {
+					hitIslands[crossed.Islands[0]]++
+					hitIslands[crossed.Islands[1]]++
+				}
+				for hitIsland, hitCount := range hitIslands {
+					if hitCount < 2 {
+						continue
+					}
+					hitLeftAfterCorner := 0
+					for _, r := range hitIsland.LiveRivers {
+						if !emptyRivers[ri].Crosses(r) && !emptyRivers[rj].Crosses(r) {
+							hitLeftAfterCorner += r.ToGive
+						}
+					}
+					if hitLeftAfterCorner >= hitIsland.NumNeeded() {
+						continue
+					}
+
+					cornerMax := max(emptyRivers[ri].ToGive, emptyRivers[rj].ToGive)
+					othersMustProvide := i.NumNeeded() - cornerMax
+					others := []*River{}
+					for _, other := range i.LiveRivers {
+						if other == emptyRivers[ri] || other == emptyRivers[rj] {
+							continue
+						}
+						others = append(others, other)
+					}
+
+					result := b.MustProvide(others, othersMustProvide)
+					if result {
+						changed = true
+						break
+					}
+				}
+			}
+		}
+	}
+	return changed
+}
+
+func (b *Board) MakeAGuess() bool {
+	for _, i := range b.AllIslands {
+		if i.IsComplete() {
+			continue
+		}
+		for _, r := range i.LiveRivers {
+			n := r.Neighbor(i)
+			c := b.Clone()
+			cloneI := c.Grid[i.R][i.C]
+			cloneN := c.Grid[n.R][n.C]
+			cloneI.RiverWith(cloneN).CapToGive(0)
+			c.AutoSolve(false)
+			if m, _ := c.HasMistakes(); m {
+				b.AddBridge(r)
+				return true
+			}
+		}
+
+		for _, r := range i.LiveRivers {
+			n := r.Neighbor(i)
+			c := b.Clone()
+			cloneI := c.Grid[i.R][i.C]
+			cloneN := c.Grid[n.R][n.C]
+			for j := 0; j < r.ToGive; j++ {
+				c.AddBridgeBetween(cloneI, cloneN)
+			}
+			c.AutoSolve(false)
+			if m, _ := c.HasMistakes(); m {
+				r.CapToGive(r.ToGive - 1)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (b *Board) Clone() *Board {
+	copy := Board{Grid: make([][]*Island, 0), Rows: b.Rows, Cols: b.Cols, Clusters: []*Cluster{}, AllRivers: []*River{}, AllIslands: []*Island{}}
+	for i := 0; i < copy.Rows; i++ {
+		copy.Grid = append(copy.Grid, make([]*Island, copy.Cols))
+	}
+	//clone islands and initialize clusters
+	for _, oldI := range b.AllIslands {
+		copy.AddIsland(oldI.Num, oldI.R, oldI.C)
+	}
+	//create rivers with bridge counts and merge clusters
+	for _, oldR := range b.AllRivers {
+		oldA := oldR.Islands[0]
+		oldB := oldR.Islands[1]
+		newA := copy.Grid[oldA.R][oldA.C]
+		newB := copy.Grid[oldB.R][oldB.C]
+		newR := copy.CreateRiver(newA, newB)
+		for j := 0; j < oldR.Bridges; j++ {
+			copy.AddBridge(newR)
+		}
+	}
+	//add crossings
+	for ci := 0; ci < copy.Cols; ci++ {
+		var top *Island
+		for ri := 0; ri < copy.Rows; ri++ {
+			bottom := copy.Grid[ri][ci]
+			if bottom == nil {
+				continue
+			}
+			if top != nil {
+				r := top.RiverWith(bottom)
+				for crossRow := top.R + 1; crossRow < bottom.R; crossRow++ {
+					crossingRiver := copy.FindHorizontalRiverCrossing(crossRow, ci)
+					if crossingRiver != nil {
+						markCrossing(crossingRiver, r)
+					}
+				}
+			}
+			top = bottom
+		}
+	}
+
+	return &copy
+}
+
+func (b *Board) AutoSolve(allowGuess bool) {
 	changed := true
 	for changed {
 		changed = false
 		changed = b.RequiredFill() || changed
 		changed = b.CapToAvoidJoinedIsolation() || changed
 		changed = b.CapToAvoidSelfIsolation() || changed
+		if m, _ := b.HasMistakes(); m {
+			return
+		}
+		if !changed {
+			changed = b.BadCorners() || changed
+		}
+		if !changed && allowGuess {
+			changed = changed || b.MakeAGuess()
+		}
 	}
+}
+
+func main() {
+	//log.LEVEL = log.DEBUG
+	if len(os.Args) != 2 {
+		fmt.Printf("usage: %s [problemfile]\n", os.Args[0])
+		return
+	}
+	b, err := GetBoardFromFile(os.Args[1])
+	if err != nil {
+		fmt.Printf("error loading file: %s\n", err)
+		return
+	}
+	fmt.Printf("Starting\n%s\n", time.Now())
+	b.AutoSolve(true)
+	fmt.Printf("Done\n%s\n", time.Now())
 	fmt.Printf("%s\n", b)
 	res, reason := b.IsSolved()
 	fmt.Printf("Solved: %v", res)
 	if reason != nil {
 		fmt.Printf(" (%v)", reason)
 	}
-	fmt.Printf("\n")
+	return
 }
+
+//todo: precompute small clusters? 3: 2 1 1?
