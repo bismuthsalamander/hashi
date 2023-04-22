@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/bismuthsalamander/hashi/log"
+	"github.com/bismuthsalamander/stopwatch"
 )
 
 const (
@@ -487,6 +487,8 @@ func BoardFromString(data string) (*Board, error) {
 }
 
 func GetBoardFromFile(fn string) (*Board, error) {
+	stopwatch.Start("Load board")
+	defer stopwatch.Stop("Load board")
 	data, err := os.ReadFile(fn)
 	if err != nil {
 		return nil, err
@@ -579,14 +581,14 @@ func (b *Board) String2(short bool) string {
 		}
 		out += "\n"
 	}
-	out += fmt.Sprintf("Clusters (%d)\n", len(b.Clusters))
 	if short {
 		return out[:len(out)-1]
 	}
+	out += fmt.Sprintf("Clusters (%d)\n", len(b.Clusters))
 	for _, c := range b.Clusters {
 		out += fmt.Sprintf("%s\n", c)
 	}
-	return out
+	return out[:len(out)-1]
 }
 
 func (b *Board) RequiredFill() bool {
@@ -754,6 +756,8 @@ func (b *Board) BadCorners() bool {
 }
 
 func (b *Board) MakeAGuess() bool {
+	stopwatch.Start("MakeAGuess")
+	defer stopwatch.Stop("MakeAGuess")
 	for _, i := range b.AllIslands {
 		if i.IsComplete() {
 			continue
@@ -790,6 +794,8 @@ func (b *Board) MakeAGuess() bool {
 }
 
 func (b *Board) Clone() *Board {
+	stopwatch.Start("Clone board")
+	defer stopwatch.Stop("Clone board")
 	copy := Board{Grid: make([][]*Island, 0), Rows: b.Rows, Cols: b.Cols, Clusters: []*Cluster{}, AllRivers: []*River{}, AllIslands: []*Island{}}
 	for i := 0; i < copy.Rows; i++ {
 		copy.Grid = append(copy.Grid, make([]*Island, copy.Cols))
@@ -852,10 +858,36 @@ func (b *Board) AutoSolve(allowGuess bool) {
 	}
 }
 
+func printUsage() {
+	fmt.Printf("usage: %s [problemfile] [options]\n", os.Args[0])
+	fmt.Printf("options:\t-t: print execution time profile\n")
+}
+
 func main() {
 	//log.LEVEL = log.DEBUG
-	if len(os.Args) != 2 {
-		fmt.Printf("usage: %s [problemfile]\n", os.Args[0])
+	if len(os.Args) > 3 {
+		printUsage()
+		return
+	}
+	var file string = ""
+	var timer bool = false
+	for idx, arg := range os.Args {
+		if idx == 0 {
+			continue
+		}
+		if arg == "-t" {
+			timer = true
+		} else {
+			if file == "" {
+				file = arg
+			} else {
+				fmt.Printf("unrecognized argument: %s\n", arg)
+				return
+			}
+		}
+	}
+	if file == "" {
+		printUsage()
 		return
 	}
 	b, err := GetBoardFromFile(os.Args[1])
@@ -863,16 +895,17 @@ func main() {
 		fmt.Printf("error loading file: %s\n", err)
 		return
 	}
-	fmt.Printf("Starting\n%s\n", time.Now())
 	b.AutoSolve(true)
-	fmt.Printf("Done\n%s\n", time.Now())
 	fmt.Printf("%s\n", b)
 	res, reason := b.IsSolved()
 	fmt.Printf("Solved: %v", res)
 	if reason != nil {
 		fmt.Printf(" (%v)", reason)
 	}
-	return
+	fmt.Print("\n")
+	if timer {
+		fmt.Print(stopwatch.Results())
+	}
 }
 
 //todo: precompute small clusters? 3: 2 1 1?
