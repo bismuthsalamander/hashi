@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bismuthsalamander/hashi/log"
 	"github.com/bismuthsalamander/stopwatch"
 )
 
@@ -560,7 +559,7 @@ func (b *Board) String2(short bool) string {
 			cright := max(r.Islands[0].C, r.Islands[1].C)
 			ri := r.Islands[0].R
 			for ci := cleft + 1; ci < cright; ci++ {
-				log.Trace("Writing %d horizontal bridges at %d, %d\n", r.Bridges, ri, ci)
+				Trace("Writing %d horizontal bridges at %d, %d\n", r.Bridges, ri, ci)
 				grid[ri][ci] = addBridgeChars(getBridgeChar(HORIZONTAL, r.Bridges), grid[ri][ci])
 			}
 		} else {
@@ -569,7 +568,7 @@ func (b *Board) String2(short bool) string {
 			rbot := max(r.Islands[0].R, r.Islands[1].R)
 			ci := r.Islands[0].C
 			for ri := rtop + 1; ri < rbot; ri++ {
-				log.Trace("Writing %d vertical bridges at %d, %d\n", r.Bridges, ri, ci)
+				Trace("Writing %d vertical bridges at %d, %d\n", r.Bridges, ri, ci)
 				grid[ri][ci] = addBridgeChars(grid[ri][ci], getBridgeChar(VERTICAL, r.Bridges))
 			}
 		}
@@ -864,7 +863,6 @@ func printUsage() {
 }
 
 func main() {
-	//log.LEVEL = log.DEBUG
 	if len(os.Args) > 3 {
 		printUsage()
 		return

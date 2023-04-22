@@ -1,4 +1,4 @@
-package log
+package main
 
 import "fmt"
 
@@ -9,10 +9,6 @@ const INFO = 2
 const DEBUG = 3
 const TRACE = 4
 
-func init() {
-	LEVEL = 1
-}
-
 func Debug(msg string, values ...interface{}) {
 	LogAtLevel(msg, DEBUG, values...)
 }
@@ -22,6 +18,9 @@ func Trace(msg string, values ...interface{}) {
 }
 
 func LogAtLevel(msg string, level int, values ...interface{}) {
+	if LEVEL == 0 {
+		LEVEL = RESULTS
+	}
 	if LEVEL >= level {
 		fmt.Printf(msg, values...)
 	}
